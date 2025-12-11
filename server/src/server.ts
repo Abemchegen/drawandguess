@@ -30,7 +30,15 @@ app.use((req, res, next) => {
   console.log('Origin:', req.headers.origin);
   next();
 });
+app.get("/health", (req, res) => {
+  res.json({ 
+    status: "ok", 
+    websocketClients: io.engine.clientsCount,
+    timestamp: new Date().toISOString()
+  });
+});
 const PORT = process.env.PORT || 8000;
 server.listen(PORT, function () {
-  console.log("listening on *:8000");
+  console.log(`🚀 Server listening on port ${PORT}`); // Use the variable, not hardcoded 8000
+  console.log(`✅ Health check: http://localhost:${PORT}/health`);
 });

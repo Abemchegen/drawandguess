@@ -42,7 +42,7 @@ export default function JoinGameForm() {
 
   // param isPrivate: boolean = false
   const handleJoin = (create: boolean = false) => {
-    if (playerData.name.trim() === "") {
+    if (playerData.name?.trim() === "") {
       setError("Please enter your name");
       return;
     }

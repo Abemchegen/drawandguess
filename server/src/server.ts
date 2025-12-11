@@ -30,7 +30,7 @@ app.use((req, res, next) => {
   console.log('Origin:', req.headers.origin);
   next();
 });
-
-server.listen(8000, function () {
+const PORT = process.env.PORT || 8000;
+server.listen(PORT, function () {
   console.log("listening on *:8000");
 });

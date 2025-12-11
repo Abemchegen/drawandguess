@@ -10,7 +10,7 @@ import Winners from "./Overlay/Winners";
 import { AnimatePresence, motion } from "framer-motion";
 
 export default function OverlayContent() {
-  const { roomState, creator, players, settings, me } = useRoom();
+  const { roomState, creator, me } = useRoom();
   const isOwner = me?.playerId === creator || creator === socket.id;
   const [word, setWord] = useState<string>("");
   const [words, setWords] = useState<string[]>([]);

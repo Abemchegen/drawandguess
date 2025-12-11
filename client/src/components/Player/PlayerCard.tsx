@@ -2,7 +2,7 @@ import { GameEvent, Player } from "../../types";
 import { motion } from "framer-motion";
 import clsx from "clsx";
 import { useRoom } from "../../context/RoomContext";
-import { CrownIcon, Pen, VolumeXIcon } from "lucide-react";
+import { CrownIcon, Pen } from "lucide-react";
 import { socket } from "../../socketHandler";
 import Dialog from "../ui/Dialog";
 import { useState } from "react";

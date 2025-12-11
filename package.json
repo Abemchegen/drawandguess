@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "grapheme-splitter": "^1.0.4"
+  },
+  "devDependencies": {
+    "cpy-cli": "^6.0.0"
+  }
+}

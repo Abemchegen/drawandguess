@@ -1,0 +1,294 @@
+import React, {
+  createContext,
+  ReactNode,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+import {
+  // DrawData,
+  GameEvent,
+  GameState,
+  Languages,
+  MidGameState,
+  Player,
+  Room,
+  RoomState,
+  Settings,
+  SettingValue,
+  Stroke,
+} from "../types";
+import { socket } from "../socketHandler";
+
+interface RoomContextValue {
+  roomId: string;
+  players: Player[];
+  creator: string | null;
+  currentPlayer: Player | null;
+  currentRound: number;
+  strokes: Stroke[] | undefined;
+  guessedWords: string[];
+  word: string;
+  settings: Settings;
+  changeSetting: (setting: SettingValue, value: string) => void;
+  setRoom: (room: Room) => void; // Optional: function to update the room context
+  myTurn: boolean;
+  me: Player | null;
+  roomState: RoomState;
+  // isPrivateRoom: boolean;
+  // mutePlayer: (playerId: string) => void;
+  // removeMute: (playerId: string) => void;
+  // mutedPlayers: string[];
+}
+const RoomContext = createContext<RoomContextValue | undefined>(undefined);
+
+// eslint-disable-next-line react-refresh/only-export-comfponents
+export const useRoom = () => {
+  const context = useContext(RoomContext);
+  if (context === undefined) {
+    throw new Error("useRoom must be used within a RoomProvider");
+  }
+  return context;
+};
+
+interface RoomProviderProps {
+  children: ReactNode;
+}
+
+export const RoomProvider: React.FC<RoomProviderProps> = ({ children }) => {
+  const [room, setRoom] = useState<Room>({
+    roomId: "",
+    creator: "",
+    players: [],
+    gameState: {
+      currentRound: 0,
+      strokes: [],
+      guessedWords: [],
+      word: "",
+      currentPlayer: 0,
+      roomState: RoomState.NOT_STARTED,
+      timerStartedAt: new Date(),
+      hintLetters: [],
+    },
+    settings: {
+      players: 0,
+      onlyCustomWords: false,
+      customWords: [],
+      hints: 0,
+      language: Languages.en,
+    },
+    // isPrivate: false,
+  });
+  const [myTurn, setIsmyTrun] = useState(false);
+  const [me, setMe] = useState<Player | null>(null);
+  const [roomState, setRoomState] = useState<RoomState>(RoomState.NOT_STARTED);
+  // const [mutedPlayers, setMutedPlayers] = useState<string[]>([]);
+
+  // Keep myTurn in sync even after reconnects or roster changes.
+  useEffect(() => {
+    const cp = room.players[room.gameState.currentPlayer] || null;
+    setIsmyTrun(cp ? cp.playerId === socket.id : false);
+  }, [room.gameState.currentPlayer, room.players, room.gameState.currentRound]);
+
+  useEffect(() => {
+    console.log(myTurn);
+  }, [myTurn]);
+
+  function addPlayer(player: Player) {
+    setRoom((p) => {
+      return { ...p, players: [...p.players, player] };
+    });
+  }
+  function removePlayer(player: Player) {
+    setRoom((p) => {
+      return {
+        ...p,
+        players: p.players.filter((e) => e.playerId != player.playerId),
+      };
+    });
+  }
+
+  function setTurn(
+    room: Room,
+    payload?: {
+      word?: string;
+      reason?: any;
+      time?: number;
+      clearDrawing?: boolean;
+      endedRound?: number;
+      currentRound?: number;
+    }
+  ) {
+    setRoomState(RoomState.GUESSED);
+    const nextRound = payload?.endedRound ?? payload?.currentRound;
+    if (typeof nextRound === "number") {
+      room = {
+        ...room,
+        gameState: { ...room.gameState, currentRound: nextRound },
+      };
+    }
+    const cP = room.players[room.gameState.currentPlayer] || null;
+    if (cP && socket.id === cP.playerId) setIsmyTrun(true);
+    else setIsmyTrun(false);
+    joinedRoom(room);
+  }
+
+  function changeSetting(setting: SettingValue, value: string) {
+    const settings = room.settings;
+    switch (setting) {
+      case SettingValue.players:
+        settings.players = parseInt(value);
+        break;
+      default:
+        break;
+    }
+    setRoom({ ...room, settings });
+  }
+  function joinedRoom(room: Room) {
+    setRoom(room);
+    setMe(room.players.find((p) => p.playerId === socket.id) ?? null);
+  }
+
+  function wordChosen() {
+    setRoomState(RoomState.DRAWING);
+  }
+
+  function choseWord(payload?: { currentRound?: number }) {
+    if (typeof payload?.currentRound === "number") {
+      setRoom((prev) => ({
+        ...prev,
+        gameState: {
+          ...prev.gameState,
+          currentRound: payload.currentRound!,
+        },
+      }));
+    }
+    setRoomState(RoomState.PLAYER_CHOOSE_WORD);
+  }
+  function choosingWord(payload?: {
+    currentRound?: number;
+    currentPlayer?: Player;
+  }) {
+    setRoom((prev) => {
+      let nextPlayerIndex = prev.gameState.currentPlayer;
+      if (payload?.currentPlayer) {
+        const idx = prev.players.findIndex(
+          (p) => p.playerId === payload.currentPlayer!.playerId
+        );
+        if (idx >= 0) nextPlayerIndex = idx;
+      }
+
+      const nextRound =
+        typeof payload?.currentRound === "number"
+          ? payload.currentRound
+          : prev.gameState.currentRound;
+
+      return {
+        ...prev,
+        gameState: {
+          ...prev.gameState,
+          currentRound: nextRound,
+          currentPlayer: nextPlayerIndex,
+          roomState: RoomState.CHOOSING_WORD,
+        },
+      };
+    });
+    setRoomState(RoomState.CHOOSING_WORD);
+  }
+
+  function gameStarted(room: Room) {
+    const cP = room.players[room.gameState.currentPlayer] || null;
+    if (cP && socket.id === cP.playerId) setIsmyTrun(true);
+    else setIsmyTrun(false);
+    joinedRoom(room);
+  }
+
+  function gameEnded({ room, time }: { room: Room; time: number }) {
+    setRoomState(RoomState.WINNER);
+    setTimeout(() => {
+      setRoomState(RoomState.NOT_STARTED);
+    }, time * 1000);
+    joinedRoom(room);
+  }
+
+  function updateGameState(midgameState: MidGameState) {
+    const gameState: GameState = {
+      currentRound: midgameState.currentRound,
+      strokes: midgameState.strokes,
+      guessedWords: midgameState.guessedWords,
+      word: "",
+      currentPlayer: midgameState.currentPlayer,
+      hintLetters: midgameState.hintLetters,
+      roomState: midgameState.roomState,
+      timerStartedAt: midgameState.timerStartedAt,
+    };
+    setRoom((p) => ({ ...p, gameState }));
+    setRoomState(gameState.roomState);
+  }
+
+  // function mutePlayer(playerId: string) {
+  //   setMutedPlayers((prevMutedPlayers) => [...prevMutedPlayers, playerId]);
+  // }
+  // function removeMute(playerId: string) {
+  //   setMutedPlayers((prevMutedPlayers) =>
+  //     prevMutedPlayers.filter((id) => id !== playerId)
+  //   );
+  // }
+
+  useEffect(() => {
+    socket.on(GameEvent.JOINED_ROOM, joinedRoom);
+    socket.on(GameEvent.WORD_CHOSEN, wordChosen);
+    socket.on(GameEvent.TURN_END, setTurn);
+    socket.on(GameEvent.GAME_STARTED, gameStarted);
+    socket.on(GameEvent.GAME_ENDED, gameEnded);
+    socket.on(GameEvent.PLAYER_JOINED, addPlayer);
+    socket.on(GameEvent.PLAYER_LEFT, removePlayer);
+    socket.on(GameEvent.CHOOSE_WORD, choseWord);
+    socket.on(GameEvent.GUESS_WORD_CHOSEN, wordChosen);
+    socket.on(GameEvent.CHOOSING_WORD, choosingWord);
+    socket.on(GameEvent.GAME_STATE, updateGameState);
+
+    return () => {
+      socket.off(GameEvent.JOINED_ROOM, joinedRoom);
+      socket.off(GameEvent.GAME_STARTED, gameStarted);
+      socket.off(GameEvent.GAME_ENDED, gameEnded);
+      socket.off(GameEvent.TURN_END, setTurn);
+      socket.off(GameEvent.PLAYER_JOINED, addPlayer);
+      socket.off(GameEvent.PLAYER_LEFT, removePlayer);
+      socket.off(GameEvent.WORD_CHOSEN, wordChosen);
+      socket.off(GameEvent.GUESS_WORD_CHOSEN, wordChosen);
+      socket.off(GameEvent.CHOOSE_WORD, choseWord);
+      socket.off(GameEvent.CHOOSING_WORD, choosingWord);
+      socket.off(GameEvent.GAME_STATE, updateGameState);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const currentPlayer = room.players[room.gameState.currentPlayer] || null;
+
+  const contextValue: RoomContextValue = {
+    roomId: room.roomId,
+    players: room.players,
+    creator: room.creator,
+    currentRound: room.gameState.currentRound,
+
+    // drawingData: room.gameState.drawingData,
+    strokes: room.gameState.strokes,
+    guessedWords: room.gameState.guessedWords,
+    word: room.gameState.word,
+    settings: room.settings,
+    setRoom: (newRoom: Room) => setRoom(newRoom),
+    currentPlayer,
+    changeSetting,
+    myTurn,
+    me,
+    roomState: roomState,
+    // mutePlayer,
+    // removeMute,
+    // mutedPlayers,
+  };
+
+  return (
+    <RoomContext.Provider value={contextValue}>{children}</RoomContext.Provider>
+  );
+};

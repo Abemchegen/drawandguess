@@ -1,0 +1,184 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  touch-action: none;
+  overflow: hidden;
+  overflow-clip-margin: content-box;
+  overflow: clip;
+}
+
+:root {
+  /* Dark gray theme for eye comfort */
+  --color-primary-1: #9fb0c8; /* lighter muted blue-gray for hover */
+  --color-primary-2: #64748b; /* slate-600 accent */
+
+  /* Neutrals: dark background -> slightly darker surfaces -> UI accents */
+  --color-neutral-1: #353943; /* page background ( dark navy-gray) */
+  --color-neutral-2: #292828; /* cards, inputs - a bit darker */
+  --color-neutral-3: #3b4d67; /* borders, scrollbar thumb */
+
+  /* Backgrounds */
+  --color-background: var(--color-neutral-1);
+  --color-background-paper: var(--color-neutral-2);
+
+  /* Text */
+  --color-text-primary: #e6eef6; /* light text */
+  --color-text-secondary: #393a3a; /* darker text */
+  --color-text-disabled: #6b7280;
+
+  /* State Colors */
+  --color-success-main: #16a34a;
+  --color-warning-main: #d97706;
+  --color-error-main: #ef4444;
+  --color-info-main: var(--color-primary-2);
+}
+
+@layer base {
+  body {
+    /* Dark theme body */
+    @apply antialiased;
+    background-color: var(--color-background);
+    color: var(--color-text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-semibold tracking-tight;
+    color: var(--color-text-primary);
+  }
+
+  h1 {
+    @apply text-4xl;
+  }
+  h2 {
+    @apply text-3xl;
+  }
+  h3 {
+    @apply text-2xl;
+  }
+
+  a {
+    @apply transition-colors duration-200 underline decoration-transparent;
+    color: var(--color-primary-2);
+  }
+  a:hover {
+    color: var(--color-primary-1);
+    text-decoration-color: var(--color-primary-1);
+  }
+}
+
+@layer components {
+  /* Buttons */
+  .btn {
+    @apply px-5 py-2 rounded-md font-medium transition-all duration-200 border border-transparent;
+  }
+
+  .btn-primary {
+    background-color: var(--color-primary-2);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(2, 6, 23, 0.6);
+  }
+  .btn-primary:hover {
+    background-color: var(--color-primary-1);
+    box-shadow: 0 8px 24px rgba(2, 6, 23, 0.7);
+  }
+
+  /* Outline: Ghostly */
+  .btn-outline {
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: var(--color-text-secondary);
+    background: transparent;
+  }
+  .btn-outline:hover {
+    border-color: rgba(255, 255, 255, 0.08);
+    color: var(--color-text-primary);
+    background-color: rgba(255, 255, 255, 0.02);
+  }
+
+  /* Cards */
+  .card {
+    background-color: var(--color-neutral-2);
+    border: 1px solid rgba(255, 255, 255, 0.04); /* Subtle border */
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    box-shadow: 0 10px 30px rgba(2, 6, 23, 0.6);
+  }
+
+  /* Utility mappings */
+  .bg-card {
+    background-color: var(--color-neutral-2) !important;
+  }
+
+  .bg-background {
+    background-color: var(--color-background) !important;
+  }
+
+  .bg-input {
+    background-color: var(--color-background-paper) !important;
+  }
+
+  .bg-background-paper {
+    background-color: var(--color-background-paper) !important;
+  }
+
+  .bg-primary {
+    background-color: var(--color-primary-2) !important;
+  }
+
+  .text-text-primary {
+    color: var(--color-text-primary) !important;
+  }
+
+  .text-text-secondary {
+    color: var(--color-text-secondary) !important;
+  }
+
+  .border-theme {
+    border-color: rgba(255, 255, 255, 0.04) !important;
+  }
+
+  /* Inputs */
+  .input {
+    width: 100%;
+    padding: 0.6rem 1rem;
+    border-radius: 0.375rem;
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    background-color: var(--color-background-paper);
+    color: var(--color-text-primary);
+    transition: border-color 0.2s;
+  }
+  .input::placeholder {
+    color: var(--color-text-disabled);
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--color-primary-1);
+  }
+}
+
+/* Scrollbar: Dark and Slim */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-background);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-neutral-3);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-neutral-2);
+}

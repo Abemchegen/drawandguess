@@ -1,5 +1,7 @@
 import io from "socket.io-client";
 
-export const socket = io("http://localhost:8000", {
+const backend = process.env.BACKEND!
+
+export const socket = io(backend, {
   autoConnect: false,
 });

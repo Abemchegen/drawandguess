@@ -23,11 +23,23 @@ import {
   handleNewPlayerJoin,
   handleNewRoom,
   handlePlayerLeft,
+  handlePlayerLeftById,
   handleSettingsChange,
   handleVoteKick,
   startGame,
   wordSelected,
 } from "../game/roomController";
+
+const disconnectGrace = new Map<string, NodeJS.Timeout>();
+
+function cancelDisconnectGrace(clientId?: string) {
+  if (!clientId) return;
+  const t = disconnectGrace.get(clientId);
+  if (t) {
+    clearTimeout(t);
+    disconnectGrace.delete(clientId);
+  }
+}
 
 export function setupSocket(io: Server) {
   io.on(GameEvent.CONNECT, (socket: Socket) => {
@@ -38,8 +50,10 @@ export function setupSocket(io: Server) {
         playerData: PlayerData,
         language: Languages = Languages.en,
         roomId?: string,
-        create?: boolean
+        create?: boolean,
+        clientIdArg?: string
       ) => {
+        const clientId = clientIdArg || String(socket.handshake.query.clientId || "");
         if (!playerData) {
           socket.emit("error", "playerData is required");
           return socket.disconnect();
@@ -51,15 +65,18 @@ export function setupSocket(io: Server) {
         }
 
         if (create) {
-        return await handleNewRoom(
+          cancelDisconnectGrace(clientId);
+          return await handleNewRoom(
             io,
             socket,
             playerData,
             language,
+            clientId
           );
         } 
         if (roomId) {
-          await handleNewPlayerJoin(roomId, socket, io, playerData, language);
+          cancelDisconnectGrace(clientId);
+          await handleNewPlayerJoin(roomId, socket, io, playerData, language, clientId);
         }
       }
     );
@@ -128,7 +145,26 @@ export function setupSocket(io: Server) {
 
     socket.on(GameEvent.DISCONNECT, async () => {
       console.log("User disconnected:", socket.id);
-      handlePlayerLeft(socket, io);
+      // Schedule cleanup with grace; capture room and playerId
+      const room = await getRoomFromSocket(socket);
+      const clientId = String(socket.handshake.query.clientId || "");
+      if (!room) return;
+      const player = room.players.find((p) => p.playerId === socket.id);
+      if (!player) return;
+      const graceMs = 8000;
+      const t = setTimeout(async () => {
+        try {
+          // Use new helper to remove by ids without relying on socket.rooms
+          await handlePlayerLeftById(room.roomId, player.playerId, io);
+        } finally {
+          if (clientId) disconnectGrace.delete(clientId);
+        }
+      }, graceMs);
+      if (clientId) {
+        const prev = disconnectGrace.get(clientId);
+        if (prev) clearTimeout(prev);
+        disconnectGrace.set(clientId, t);
+      }
     });
 
     socket.on(GameEvent.VOTE_KICK, (playerId: string) => {

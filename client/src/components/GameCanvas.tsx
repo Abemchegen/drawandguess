@@ -209,19 +209,21 @@ const GameCanvas = (_props: { room: Room }) => {
     setDrawingLocked(false);
   }
 
-  function handleMidJoin(gameState: MidGameState) {
-    // Sync strokes
-    // handleDrawFull(gameState.strokes ?? []);
+  // function handleMidJoin(gameState: MidGameState) {
+  //   // Sync strokes
+  //   // handleDrawFull(gameState.strokes ?? []);
 
-    // Unlock drawing if I'm the drawer and we're in drawing phase
-    const isDrawingPhase = gameState.roomState === RoomState.DRAWING;
-    const amDrawer =
-      gameState.currentPlayer !== undefined &&
-      players[gameState.currentPlayer]?.playerId === socket.id;
+  //   // Unlock drawing if I'm the drawer and we're in drawing phase
+  //   const isDrawingPhase = gameState.roomState === RoomState.DRAWING;
+  //   // Prefer id-based detection to avoid relying on potentially stale players array
+  //   const amDrawer = gameState.currentDrawerId
+  //     ? gameState.currentDrawerId === socket.id
+  //     : gameState.currentPlayer !== undefined &&
+  //       players[gameState.currentPlayer]?.playerId === socket.id;
 
-    // Lock unless I'm the drawer during drawing phase
-    setDrawingLocked(!(isDrawingPhase && amDrawer));
-  }
+  //   // Lock unless I'm the drawer during drawing phase
+  //   setDrawingLocked(!(isDrawingPhase && amDrawer));
+  // }
 
   function handleDrawFull(strokes: Stroke[]) {
     if (!strokes) return;
@@ -246,7 +248,7 @@ const GameCanvas = (_props: { room: Room }) => {
     socket.on(GameEvent.DRAW_FULL, handleDrawFull);
     socket.on(GameEvent.TURN_END, handleTurnEnd);
     socket.on(GameEvent.CHOOSE_WORD, handleChoseWord);
-    socket.on(GameEvent.GAME_STATE, handleMidJoin);
+    // socket.on(GameEvent.GAME_STATE, handleMidJoin);
 
     return () => {
       socket.off(GameEvent.DRAW_DATA, receiveDrawPoint);
@@ -256,7 +258,7 @@ const GameCanvas = (_props: { room: Room }) => {
       socket.off(GameEvent.DRAW_FULL, handleDrawFull);
       socket.off(GameEvent.TURN_END, handleTurnEnd);
       socket.off(GameEvent.CHOOSE_WORD, handleChoseWord);
-      socket.off(GameEvent.GAME_STATE, handleMidJoin);
+      // socket.off(GameEvent.GAME_STATE, handleMidJoin);
     };
   }, []);
 

@@ -53,7 +53,15 @@ export default function JoinGameForm() {
       setError("Please provide a room id to join a room!");
       return;
     }
-    socket.emit(GameEvent.JOIN_ROOM, playerData, language, roomId, create);
+    const clientId = localStorage.getItem("clientId") || "";
+    socket.emit(
+      GameEvent.JOIN_ROOM,
+      playerData,
+      language,
+      roomId,
+      create,
+      clientId
+    );
     console.log("tried to join");
   };
 

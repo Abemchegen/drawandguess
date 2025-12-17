@@ -13,15 +13,6 @@ import { DEFAULT_GAME_SETTINGS } from "../constants";
 export function generateRoomId() {
   return crypto.randomUUID()
 
-  // return String("xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx").replace(
-  //   /[xy]/g,
-  //   (character) => {
-  //     const random = (Math.random() * 16) | 0;
-  //     const value = character === "x" ? random : (random & 0x3) | 0x8;
-
-  //     return value.toString(16);
-  //   }
-  // );
 }
 
 export async function generateEmptyRoom(
@@ -40,7 +31,10 @@ export async function generateEmptyRoom(
       strokes: [],
       guessedWords: [],
       word: "",
-      currentPlayer: 0,
+      currentPlayer: -1,
+      currentDrawerId: null,
+      roundOrder: [],
+      roundStartedAt: Date.now(),
       hintLetters: [],
       roomState: RoomState.NOT_STARTED,
       timerStartedAt: new Date(),

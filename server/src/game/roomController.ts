@@ -8,20 +8,19 @@ import {
   ReactionType,
   Room,
   RoomState,
+  RoundEndReason,
   Settings,
 } from "../types";
 import {
   deleteRedisRoom,
-  // getPublicRoom,
   getRedisRoom,
   setRedisRoom,
 } from "../utils/redis";
-import { GameEvent, RounEndReason , Stroke} from "../types";
+import { GameEvent , Stroke} from "../types";
 import { convertToUnderscores, getRandomWords, normalizeForCompare } from "../utils/word";
 import { generateEmptyRoom } from "./gameController";
 import { getRoomFromSocket } from "./gameController";
 import {
-  // BONUS_PER_GUESS,
   DRAWER_POINTS,
   DRAWING_TIME,
   END_ROUND_TIME,
@@ -35,9 +34,69 @@ const timers = new Map();
 const hintTimers = new Map();
 const splitter = new GraphemeSplitter();
 const inProgressStrokes = new Map<string, Map<string, Stroke>>();
-
-// This is for new game on public rooms
 const startGameTimers = new Map();
+
+function ensurePlayerFlags(room: Room) {
+  room.players = room.players.map((p) => ({
+    ...p,
+    hasDrawn: p.hasDrawn ?? false,
+    joinedAt: p.joinedAt ?? Date.now(),
+  }));
+}
+
+function startRound(room: Room) {
+  ensurePlayerFlags(room);
+  room.players = room.players.map((p) => ({ ...p, hasDrawn: false }));
+  room.gameState.roundOrder = room.players.map((p) => p.playerId);
+  room.gameState.currentDrawerId = null;
+  room.gameState.currentPlayer = -1;
+  room.gameState.roundStartedAt = Date.now();
+}
+
+function removeFromRoundOrder(room: Room, playerId: string) {
+  room.gameState.roundOrder = (room.gameState.roundOrder || []).filter(
+    (id) => id !== playerId
+  );
+}
+
+function getCurrentDrawer(room: Room): Player | null {
+  if (!room.gameState.currentDrawerId) return null;
+  return (
+    room.players.find((p) => p.playerId === room.gameState.currentDrawerId) ||
+    null
+  );
+}
+
+function pickNextDrawer(room: Room): Player | null {
+  ensurePlayerFlags(room);
+  const activeOrder = (room.gameState.roundOrder || []).filter((id) =>
+    room.players.some((p) => p.playerId === id)
+  );
+  room.gameState.roundOrder = activeOrder;
+  const nextId = activeOrder.find((id) => {
+    const player = room.players.find((p) => p.playerId === id);
+    return player && !player.hasDrawn;
+  });
+  if (!nextId) return null;
+
+  const drawer = room.players.find((p) => p.playerId === nextId) || null;
+  if (!drawer) return null;
+  drawer.hasDrawn = true;
+  room.gameState.currentDrawerId = drawer.playerId;
+  room.gameState.currentPlayer = room.players.findIndex(
+    (p) => p.playerId === drawer.playerId
+  );
+  return drawer;
+}
+
+function allEligibleDrew(room: Room) {
+  ensurePlayerFlags(room);
+  const eligible = (room.gameState.roundOrder || [])
+    .map((id) => room.players.find((p) => p.playerId === id))
+    .filter(Boolean) as Player[];
+  if (eligible.length === 0) return false;
+  return eligible.every((p) => p.hasDrawn);
+}
 
 export async function handleReaction(
   socket: Socket,
@@ -47,7 +106,7 @@ export async function handleReaction(
   const room = await getRoomFromSocket(socket);
   if (!room) return;
 
-  const currentDrawer = room.players[room.gameState.currentPlayer] || null;
+  const currentDrawer = getCurrentDrawer(room);
   if (currentDrawer && currentDrawer.playerId === socket.id) return;
 
   if (type !== "like" && type !== "dislike") return;
@@ -112,12 +171,16 @@ function resetRoundState(
     ...p,
     guessed: false,
     guessedAt: null,
+    hasDrawn: false,
     ...(resetScores ? { score: 0 } : {}),
   }));
 
   if (resetRoundCounters) {
     room.gameState.currentRound = 0;
-    room.gameState.currentPlayer = 0;
+    room.gameState.currentPlayer = -1;
+    room.gameState.currentDrawerId = null;
+    room.gameState.roundOrder = [];
+    room.gameState.roundStartedAt = Date.now();
   }
 
   if (roomState !== undefined) {
@@ -130,9 +193,15 @@ function resetRoundState(
 async function getCurrentPlayerOrEnd(roomId: string, io: Server) {
   const room = await getRedisRoom(roomId);
   if (!room) return null;
-  const cp = room.players[room.gameState.currentPlayer];
+  ensurePlayerFlags(room);
+  const drawerId = room.gameState.currentDrawerId;
+  if (!drawerId) {
+    await endRound(roomId, io, RoundEndReason.LEFT);
+    return null;
+  }
+  const cp = room.players.find((p) => p.playerId === drawerId) || null;
   if (!cp) {
-    await endRound(roomId, io, RounEndReason.LEFT);
+    await endRound(roomId, io, RoundEndReason.LEFT);
     return null;
   }
   return cp;
@@ -148,7 +217,7 @@ export async function startGame(room: Room, io: Server) {
     durationSeconds: END_ROUND_TIME,
   });
   room.gameState.currentRound = 1;
-  room.gameState.currentPlayer = 0;
+  startRound(room);
   await setRedisRoom(room.roomId, room);
   io.to(room.roomId).emit(GameEvent.GAME_STARTED, room);
   await nextRound(room.roomId, io);
@@ -158,29 +227,25 @@ export async function startGame(room: Room, io: Server) {
 export async function endRound(
   roomId: string,
   io: Server,
-  reason: RounEndReason = RounEndReason.TIMEUP
+  reason: RoundEndReason = RoundEndReason.TIMEUP
 ) {
   let room = await getRedisRoom(roomId);
   if (!room) return;
   clearTimers(room.roomId);
   clearInProgressStrokes(room.roomId);
 
-  const currentDrawerId = room.players[room.gameState.currentPlayer]?.playerId;
+  const currentDrawerId = room.gameState.currentDrawerId;
 
-  if (reason !== RounEndReason.LEFT) {
+  if (reason !== RoundEndReason.LEFT && currentDrawerId) {
     await givePoints(roomId, io, currentDrawerId);
     room = await getRedisRoom(roomId);
     if (!room) return;
   }
 
-  room.gameState.currentPlayer += 1;
   const word = room.gameState.word;
-
-  if (room.gameState.currentPlayer >= room.players.length) {
-    // Round end
-    room.gameState.currentRound += 1;
-    room.gameState.currentPlayer = 0;
-  }
+  // Advance turn state; we don't rely on index anymore.
+  room.gameState.currentDrawerId = null;
+  room.gameState.currentPlayer = -1;
   await setRedisRoom(roomId, room);
 
   room = await getRedisRoom(roomId);
@@ -242,7 +307,7 @@ export async function guessWord(
         (p) => p.guessed || p.playerId === currentPlayer.playerId
       )
     ) {
-      await endRound(room.roomId, io, RounEndReason.ALL_GUESSED);
+      await endRound(room.roomId, io, RoundEndReason.ALL_GUESSED);
     }
   } else {
     io.to(room.roomId).emit(GameEvent.GUESS, guess, player);
@@ -250,12 +315,36 @@ export async function guessWord(
 }
 
 export async function nextRound(roomId: string, io: Server) {
-  const room = await getRedisRoom(roomId);
+  let room = await getRedisRoom(roomId);
   if (!room) return;
 
-  // Set the current player
-  const currentPlayer = await getCurrentPlayerOrEnd(roomId, io);
-  if (!currentPlayer) return;
+  ensurePlayerFlags(room);
+  room.gameState.roundOrder = (room.gameState.roundOrder || []).filter((id) =>
+    room.players.some((p) => p.playerId === id)
+  );
+
+  if (allEligibleDrew(room)) {
+    room.gameState.currentRound += 1;
+    if (room.gameState.currentRound > 3) {
+      await setRedisRoom(room.roomId, room);
+      return await endGame(roomId, io);
+    }
+    startRound(room);
+  }
+
+  let currentPlayer = getCurrentDrawer(room);
+  if (!currentPlayer) {
+    currentPlayer = pickNextDrawer(room);
+  }
+
+  // If still no drawer, end game if not enough players
+  if (!currentPlayer) {
+    await setRedisRoom(room.roomId, room);
+    if (room.players.length < 2) {
+      return await endGame(roomId, io);
+    }
+    return; // Cannot proceed without a drawer but keep state
+  }
 
   // Get random words
   const words = await getRandomWords(
@@ -270,6 +359,7 @@ export async function nextRound(roomId: string, io: Server) {
     words,
     time: WORDCHOOSE_TIME,
     currentRound: room.gameState.currentRound,
+    drawerId: currentPlayer.playerId,
   });
 
   // Send choosing word event to other players in the room
@@ -294,19 +384,18 @@ export async function nextRound(roomId: string, io: Server) {
 
     async function fallbackFix(room) {
       if (room.gameState.word !== "") return;
-        console.log(fallbackWords)
-        if (!fallbackWords || fallbackWords.length === 0) {
-          fallbackWords = await getRandomWords(
-            3,
-            room.settings.language,
-            room.settings.onlyCustomWords,
-            room.settings.customWords
-          );
-        }
+      if (!fallbackWords || fallbackWords.length === 0) {
+        fallbackWords = await getRandomWords(
+          3,
+          room.settings.language,
+          room.settings.onlyCustomWords,
+          room.settings.customWords
+        );
+      }
 
-        if (!fallbackWords || fallbackWords.length === 0) {
-          return await endRound(roomId, io, RounEndReason.TIMEUP);
-        }
+      if (!fallbackWords || fallbackWords.length === 0) {
+        return await endRound(roomId, io, RoundEndReason.TIMEUP);
+      }
     }
     fallbackFix(room);
     const randomWord =
@@ -314,8 +403,6 @@ export async function nextRound(roomId: string, io: Server) {
     await wordSelected(roomId, randomWord, io);
   }, WORDCHOOSE_TIME * 1000);
   timers.set(roomId, timeOut);
-  console.log("here")
-  console.log(room.gameState.word)
 }
 
 export async function wordSelected(roomId: string, word: string, io: Server) {
@@ -350,7 +437,7 @@ export async function wordSelected(roomId: string, word: string, io: Server) {
   });
 
   const timeOut = setTimeout(async () => {
-    await endRound(roomId, io, RounEndReason.TIMEUP);
+    await endRound(roomId, io, RoundEndReason.TIMEUP);
   }, 60 * 1000);
   timers.set(roomId, timeOut);
 
@@ -386,7 +473,7 @@ export async function givePoints(roomId: string, io : Server, drawerId?: string)
   // Prefer the explicitly passed drawer so we don't accidentally advance turns.
   const currentPlayer = drawerId
     ? room.players.find((p) => p.playerId === drawerId)
-    : room.players[room.gameState.currentPlayer];
+    : room.players.find((p) => p.playerId === room.gameState.currentDrawerId);
   if (!currentPlayer) return;
   const guessers =  Math.max(1, room.players.length - 1);
   const BONUS_PER_GUESS = 200 / guessers;
@@ -436,12 +523,13 @@ export const handleNewRoom = async (
   socket: Socket,
   playerData: PlayerData,
   language: Languages,
+  clientId?: string,
 ) => {
   let roomId;
     roomId = await generateEmptyRoom(socket, language);
   // Ensure the creator joins the room before returning to avoid races where
   // the socket disconnects before join completes and leaves an orphan room.
-  await handleNewPlayerJoin(roomId, socket, io, playerData, language);
+  await handleNewPlayerJoin(roomId, socket, io, playerData, language, clientId);
 };
 
 export async function handleDrawAction(
@@ -537,11 +625,14 @@ export async function handleDrawAction(
 export const handlePlayerLeft = async (socket: Socket, io: Server) => {
   const room = await getRoomFromSocket(socket);
   if (!room) return;
+  ensurePlayerFlags(room);
 
   const playerIndex = room.players.findIndex((e) => e.playerId === socket.id);
   if (playerIndex === -1) return;
   const player = room.players[playerIndex];
   if (!player) return;
+
+  removeFromRoundOrder(room, player.playerId);
 
   // Ownership transfer 
   if (room.creator === player.playerId) {
@@ -551,14 +642,15 @@ export const handlePlayerLeft = async (socket: Socket, io: Server) => {
   }
 
   // If the leaving player is the current drawer, end the round
-  if (playerIndex === room.gameState.currentPlayer) {
+  if (room.gameState.currentDrawerId === player.playerId) {
     // Wipe any ongoing strokes from this drawer before ending the round so
     // remaining clients don't keep stale drawings.
     clearInProgressStrokes(room.roomId);
     room.gameState.strokes = [];
+    room.gameState.currentDrawerId = null;
     await setRedisRoom(room.roomId, room);
     io.to(room.roomId).emit(GameEvent.CLEAR_DRAW);
-    await endRound(room.roomId, io, RounEndReason.LEFT);
+    await endRound(room.roomId, io, RoundEndReason.LEFT);
     // After ending the round, if fewer than 2 players remain, end game immediately.
     const latest = await getRedisRoom(room.roomId);
     if (latest && latest.players.length < 2 && latest.gameState.currentRound >= 1) {
@@ -717,7 +809,8 @@ export async function handleNewPlayerJoin(
   socket: Socket,
   io: Server,
   playerData: PlayerData,
-  language: Languages
+  language: Languages,
+  clientId?: string
 ) {
   const room = await getRedisRoom(roomId);
   if (!room) {
@@ -731,19 +824,49 @@ export async function handleNewPlayerJoin(
     return socket.disconnect();
   }
 
-  const player: Player = {
-    ...playerData,
-    score: 0,
-    playerId: socket.id,
-    guessed: false,
-    guessedAt: null,
-  };
+  // Try to find existing player by stable clientId and reuse their slot
+  const cid = clientId || String(socket.handshake.query.clientId || "");
+
+  const existingByClient = cid
+    ? room.players.find((p) => p.clientId === cid)
+    : undefined;
+
+  let player: Player;
+  if (existingByClient) {
+    player = {
+      ...existingByClient,
+      playerId: socket.id,
+      clientId: cid || existingByClient.clientId,
+    };
+
+    // If this reconnecting player was the current drawer, remap drawer id
+    if (room.gameState.currentDrawerId === existingByClient.playerId) {
+      room.gameState.currentDrawerId = socket.id;
+    }
+    // Also remap any occurrences in roundOrder
+    room.gameState.roundOrder = (room.gameState.roundOrder || []).map((id) =>
+      id === existingByClient.playerId ? socket.id : id
+    );
+  } else {
+    player = {
+      ...playerData,
+      score: 0,
+      playerId: socket.id,
+      clientId: cid || undefined,
+      guessed: false,
+      guessedAt: null,
+      hasDrawn: false,
+      joinedAt: Date.now(),
+    };
+  }
 
     console.log("join")
 
 
   // Prevent duplicate entries for the same socket id
-  const existingIndex = room.players.findIndex((p) => p.playerId === socket.id);
+  const existingIndex = existingByClient
+    ? room.players.findIndex((p) => p.clientId === cid)
+    : room.players.findIndex((p) => p.playerId === socket.id);
   if (existingIndex !== -1) {
     // Replace existing entry (keep position)
     room.players[existingIndex] = { ...room.players[existingIndex], ...player };
@@ -764,6 +887,59 @@ export async function handleNewPlayerJoin(
   }
 }
 
+// Helper used by disconnect grace timeout to remove player by id
+export const handlePlayerLeftById = async (roomId: string, playerId: string, io: Server) => {
+  const room = await getRedisRoom(roomId);
+  if (!room) return;
+  ensurePlayerFlags(room);
+
+  const playerIndex = room.players.findIndex((e) => e.playerId === playerId);
+  if (playerIndex === -1) return;
+  const player = room.players[playerIndex];
+  if (!player) return;
+
+  removeFromRoundOrder(room, player.playerId);
+
+  // Ownership transfer
+  if (room.creator === player.playerId) {
+    const nextOwner = room.players.find((p) => p.playerId !== player.playerId);
+    room.creator = nextOwner ? nextOwner.playerId : null;
+    await setRedisRoom(room.roomId, room);
+  }
+
+  // If the leaving player is the current drawer, end the round
+  if (room.gameState.currentDrawerId === player.playerId) {
+    clearInProgressStrokes(room.roomId);
+    room.gameState.strokes = [];
+    room.gameState.currentDrawerId = null;
+    await setRedisRoom(room.roomId, room);
+    io.to(room.roomId).emit(GameEvent.CLEAR_DRAW);
+    await endRound(room.roomId, io, RoundEndReason.LEFT);
+    const latest = await getRedisRoom(room.roomId);
+    if (latest && latest.players.length < 2 && latest.gameState.currentRound >= 1) {
+      await endGame(room.roomId, io);
+      return;
+    }
+  }
+
+  room.players = room.players.filter((e) => e.playerId != player.playerId);
+  if (room.players.length <= 0) {
+    await deleteRedisRoom(room.roomId);
+    clearTimers(room.roomId);
+    clearInProgressStrokes(room.roomId);
+    if (startGameTimers.has(room.roomId)) {
+      clearTimeout(startGameTimers.get(room.roomId));
+      startGameTimers.delete(room.roomId);
+    }
+    return;
+  }
+  await setRedisRoom(room.roomId, room);
+  io.to(room.roomId).emit(GameEvent.PLAYER_LEFT, player);
+  if (room.players.length < 2 && room.gameState.currentRound >= 1) {
+    await endGame(room.roomId, io);
+  }
+};
+
 export async function handleInBetweenJoin(
   roomId: string,
   socket: Socket,
@@ -772,6 +948,11 @@ export async function handleInBetweenJoin(
   const room = await getRedisRoom(roomId);
   if (!room) return;
   socket.join(roomId);
+  ensurePlayerFlags(room);
+  const currentPlayerIndex = room.players.findIndex(
+    (p) => p.playerId === room.gameState.currentDrawerId
+  );
+  const currentPlayerObj = currentPlayerIndex >= 0 ? room.players[currentPlayerIndex] : null;
 
   // subtract now from timerStartedAt
   const now = Date.now();
@@ -786,24 +967,36 @@ export async function handleInBetweenJoin(
         ? []
         : convertToUnderscores(room.gameState.word),
     time,
+    currentPlayer: currentPlayerIndex >= 0 ? currentPlayerIndex : -1,
   };
   console.log("in middle join")
   socket.emit(GameEvent.GAME_STATE,  midgameState);
   socket.emit(GameEvent.DRAW_FULL, room.gameState.strokes ?? []);
   // Re-broadcast the active phase timer so reconnecting client aligns with others.
   if (room.gameState.roomState === RoomState.CHOOSING_WORD) {
-    socket.emit(GameEvent.CHOOSING_WORD, {
-      currentPlayer: room.players[room.gameState.currentPlayer],
-      time: Math.max(0, time),
-      currentRound: room.gameState.currentRound,
-        drawerId: room.players[room.gameState.currentPlayer]?.playerId,
-    });
+    if (currentPlayerObj) {
+      socket.emit(GameEvent.CHOOSING_WORD, {
+        currentPlayer: currentPlayerObj,
+        time: Math.max(0, time),
+        currentRound: room.gameState.currentRound,
+          drawerId: room.gameState.currentDrawerId,
+      });
+    }
   } else if (room.gameState.roomState === RoomState.DRAWING) {
-    socket.emit(GameEvent.GUESS_WORD_CHOSEN, {
-      word: convertToUnderscores(room.gameState.word),
-      time: Math.max(0, time),
-        drawerId: room.players[room.gameState.currentPlayer]?.playerId,
-    });
+    const isDrawer = room.gameState.currentDrawerId === socket.id;
+    if (isDrawer) {
+      socket.emit(GameEvent.WORD_CHOSEN, {
+        word: room.gameState.word,
+        time: Math.max(0, time),
+        drawerId: room.gameState.currentDrawerId,
+      });
+    } else {
+      socket.emit(GameEvent.GUESS_WORD_CHOSEN, {
+        word: convertToUnderscores(room.gameState.word),
+        time: Math.max(0, time),
+        drawerId: room.gameState.currentDrawerId,
+      });
+    }
   }
 }
 
@@ -841,11 +1034,35 @@ export async function handleVoteKick(
   });
 
   if (votes >= votesNeeded) {
-    room.players = room.players.filter((e) => e.playerId !== playerId);
-    room.vote_kickers = room.vote_kickers.filter((e) => e[0] !== playerId);
+    const kickedId = playerId;
+    const wasDrawer = room.gameState.currentDrawerId === kickedId;
+    const wasCreator = room.creator === kickedId;
+
+    removeFromRoundOrder(room, kickedId);
+    room.players = room.players.filter((e) => e.playerId !== kickedId);
+    room.vote_kickers = room.vote_kickers.filter((e) => e[0] !== kickedId);
+
+    if (wasCreator) {
+      const nextOwner = room.players.find((p) => p.playerId !== kickedId) || null;
+      room.creator = nextOwner ? nextOwner.playerId : null;
+    }
+
+    await setRedisRoom(room.roomId, room);
+
     io.to(room.roomId).emit(GameEvent.PLAYER_LEFT, player);
-    io.to(playerId).emit(GameEvent.KICKED);
-    io.sockets.sockets.get(playerId)?.leave(room.roomId);
+    io.to(kickedId).emit(GameEvent.KICKED);
+    io.sockets.sockets.get(kickedId)?.leave(room.roomId);
+
+    if (wasDrawer) {
+      clearInProgressStrokes(room.roomId);
+      room.gameState.strokes = [];
+      room.gameState.currentDrawerId = null;
+      await setRedisRoom(room.roomId, room);
+      io.to(room.roomId).emit(GameEvent.CLEAR_DRAW);
+      await endRound(room.roomId, io, RoundEndReason.LEFT);
+    } else if (room.players.length < 2 && room.gameState.currentRound >= 1) {
+      await endGame(room.roomId, io);
+    }
   }
   await setRedisRoom(room.roomId, room);
 }

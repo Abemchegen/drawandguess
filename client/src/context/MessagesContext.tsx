@@ -135,8 +135,8 @@ export default function MessagesContext({
     votes: number;
     votesNeeded: number;
   }) {
-    setMessages([
-      ...messages,
+    setMessages((prev) => [
+      ...prev,
       {
         sender: "",
         message: `${voter} is voting to kick ${votee} (${votes}/${votesNeeded})`,

@@ -1,5 +1,20 @@
 import io from "socket.io-client";
 
+// Stable clientId persisted across reconnects
+function ensureClientId(): string {
+  let cid = localStorage.getItem("clientId");
+  if (!cid) {
+    if (window.crypto && "randomUUID" in window.crypto) {
+      cid = window.crypto.randomUUID();
+    } else {
+      cid = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+    localStorage.setItem("clientId", cid);
+  }
+  return cid as string;
+}
+const clientId = ensureClientId();
+
 // Determine backend URL - CRITICAL for Railway
 let backendUrl;
 
@@ -34,7 +49,8 @@ export const socket = io(backendUrl, {
   // Query parameters for handshake
   query: {
     clientType: "web",
-    version: "1.0"
+    version: "1.0",
+    clientId,
   }
 });
 

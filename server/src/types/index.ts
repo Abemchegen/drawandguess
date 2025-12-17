@@ -11,17 +11,16 @@ export enum RoomState {
 
 export interface PlayerData {
   name: string;
-  appearance: [number, number, number];
 }
 
 export type EndTurnData = {
   word: string;
-  reason: RounEndReason;
+  reason: RoundEndReason;
   time: number;
   clearDrawing?: boolean;
 };
 
-export enum RounEndReason {
+export enum RoundEndReason {
   ALL_GUESSED = 1,
   TIMEUP,
   LEFT,
@@ -29,9 +28,12 @@ export enum RounEndReason {
 
 export interface Player extends PlayerData {
   playerId: string;
+  clientId?: string;
   score: number;
   guessed: boolean;
   guessedAt: Date | null;
+  hasDrawn: boolean;
+  joinedAt: number;
 }
 
 export interface GameState {
@@ -40,6 +42,9 @@ export interface GameState {
   guessedWords: string[];
   word: string;
   currentPlayer: number;
+  currentDrawerId: string | null;
+  roundOrder: string[];
+  roundStartedAt: number;
   hintLetters: GuessedLetters[];
   roomState: RoomState;
   timerStartedAt: Date;
@@ -51,6 +56,9 @@ export interface MidGameState {
   strokes?: Stroke[];
   guessedWords: string[];
   currentPlayer: number;
+  currentDrawerId: string | null;
+  roundOrder: string[];
+  roundStartedAt: number;
   hintLetters: GuessedLetters[];
   roomState: RoomState;
   timerStartedAt: Date;
@@ -63,10 +71,6 @@ export interface MidGameState {
 export interface GuessedLetters {
   index: number;
   letter: string;
-}
-
-export interface PlayerData {
-  name: string;
 }
 
 export interface DrawData {

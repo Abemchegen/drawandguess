@@ -55,7 +55,9 @@ export interface Player extends PlayerData {
   playerId: string;
   score: number;
   guessed: boolean;
-  guessedAt: Date | null;
+  guessedAt: Date | null; 
+  hasDrawn: boolean;
+  joinedAt: number;
 }
 
 export interface DrawData {
@@ -93,6 +95,9 @@ export interface GameState {
   guessedWords: string[];
   word: string;
   currentPlayer: number;
+  currentDrawerId: string | null;
+  roundOrder: string[];
+  roundStartedAt: number;
   hintLetters: GuessedLetters[];
   roomState: RoomState;
   timerStartedAt: Date;
@@ -106,6 +111,9 @@ export interface MidGameState {
   guessedWords: string[];
   currentPlayer: number;
   hintLetters: GuessedLetters[];
+   currentDrawerId: string | null;
+  roundOrder: string[];
+  roundStartedAt: number;
   roomState: RoomState;
   timerStartedAt: Date;
   phaseEndsAt?: number; // epoch ms when current phase should end

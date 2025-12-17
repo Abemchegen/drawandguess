@@ -9,7 +9,7 @@ const app = express();
 const server = http.createServer(app);
 
 // Get URLs from environment
-const FRONTEND_URL = process.env.FRONTEND || "http://localhost:3000";
+const FRONTEND_URL = process.env.FRONTEND
 const BACKEND_URL = process.env.BACKEND
   ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
   : "http://localhost:8000";

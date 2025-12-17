@@ -66,6 +66,9 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({ children }) => {
       guessedWords: [],
       word: "",
       currentPlayer: 0,
+      currentDrawerId: null,
+      roundOrder: [],
+      roundStartedAt: Date.now(),
       roomState: RoomState.NOT_STARTED,
       timerStartedAt: new Date(),
       hintLetters: [],
@@ -86,9 +89,14 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({ children }) => {
 
   // Keep myTurn in sync even after reconnects or roster changes.
   useEffect(() => {
+    // Prefer socket-id based drawer if present
+    if (room.gameState.currentDrawerId) {
+      setIsmyTrun(room.gameState.currentDrawerId === socket.id);
+      return;
+    }
     const cp = room.players[room.gameState.currentPlayer] || null;
     setIsmyTrun(cp ? cp.playerId === socket.id : false);
-  }, [room.gameState.currentPlayer, room.players, room.gameState.currentRound]);
+  }, [room.gameState.currentPlayer, room.gameState.currentDrawerId, room.players, room.gameState.currentRound]);
 
   useEffect(() => {
     console.log(myTurn);
@@ -127,7 +135,9 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({ children }) => {
         gameState: { ...room.gameState, currentRound: nextRound },
       };
     }
-    const cP = room.players[room.gameState.currentPlayer] || null;
+    const cP = room.gameState.currentDrawerId
+      ? room.players.find((p) => p.playerId === room.gameState.currentDrawerId) || null
+      : room.players[room.gameState.currentPlayer] || null;
     if (cP && socket.id === cP.playerId) setIsmyTrun(true);
     else setIsmyTrun(false);
     joinedRoom(room);
@@ -153,7 +163,7 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({ children }) => {
     setRoomState(RoomState.DRAWING);
   }
 
-  function choseWord(payload?: { currentRound?: number }) {
+  function choseWord(payload?: { currentRound?: number; drawerId?: string }) {
     if (typeof payload?.currentRound === "number") {
       setRoom((prev) => ({
         ...prev,
@@ -163,11 +173,27 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({ children }) => {
         },
       }));
     }
+    // If I'm the drawer and got CHOOSE_WORD, ensure currentPlayer index points to me
+    if (payload?.drawerId) {
+      setRoom((prev) => {
+        const myIdx = prev.players.findIndex((p) => p.playerId === socket.id);
+        const nextIdx = myIdx >= 0 ? myIdx : prev.gameState.currentPlayer;
+        return {
+          ...prev,
+          gameState: {
+            ...prev.gameState,
+            currentPlayer: nextIdx,
+          },
+        };
+      });
+      setIsmyTrun(true);
+    }
     setRoomState(RoomState.PLAYER_CHOOSE_WORD);
   }
   function choosingWord(payload?: {
     currentRound?: number;
     currentPlayer?: Player;
+    drawerId?: string;
   }) {
     setRoom((prev) => {
       let nextPlayerIndex = prev.gameState.currentPlayer;
@@ -189,6 +215,7 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({ children }) => {
           ...prev.gameState,
           currentRound: nextRound,
           currentPlayer: nextPlayerIndex,
+          currentDrawerId: payload?.currentPlayer?.playerId ?? null,
           roomState: RoomState.CHOOSING_WORD,
         },
       };
@@ -197,7 +224,9 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({ children }) => {
   }
 
   function gameStarted(room: Room) {
-    const cP = room.players[room.gameState.currentPlayer] || null;
+    const cP = room.gameState.currentDrawerId
+      ? room.players.find((p) => p.playerId === room.gameState.currentDrawerId) || null
+      : room.players[room.gameState.currentPlayer] || null;
     if (cP && socket.id === cP.playerId) setIsmyTrun(true);
     else setIsmyTrun(false);
     joinedRoom(room);
@@ -212,28 +241,29 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({ children }) => {
   }
 
   function updateGameState(midgameState: MidGameState) {
-    const gameState: GameState = {
-      currentRound: midgameState.currentRound,
-      strokes: midgameState.strokes,
-      guessedWords: midgameState.guessedWords,
-      word: "",
-      currentPlayer: midgameState.currentPlayer,
-      hintLetters: midgameState.hintLetters,
-      roomState: midgameState.roomState,
-      timerStartedAt: midgameState.timerStartedAt,
-    };
-    setRoom((p) => ({ ...p, gameState }));
-    setRoomState(gameState.roomState);
+    // Compute index from currentDrawerId when provided
+    setRoom((prev) => {
+      const idx = midgameState.currentDrawerId
+        ? prev.players.findIndex((p) => p.playerId === midgameState.currentDrawerId)
+        : midgameState.currentPlayer;
+      const nextState: GameState = {
+        currentRound: midgameState.currentRound,
+        strokes: midgameState.strokes,
+        guessedWords: midgameState.guessedWords,
+        word: "",
+        currentPlayer: idx,
+        currentDrawerId: midgameState.currentDrawerId ?? null,
+        roundOrder: midgameState.roundOrder ?? [],
+        roundStartedAt: midgameState.roundStartedAt ?? Date.now(),
+        hintLetters: midgameState.hintLetters,
+        roomState: midgameState.roomState,
+        timerStartedAt: midgameState.timerStartedAt,
+        phaseEndsAt: midgameState.phaseEndsAt,
+      };
+      setRoomState(nextState.roomState);
+      return { ...prev, gameState: nextState };
+    });
   }
-
-  // function mutePlayer(playerId: string) {
-  //   setMutedPlayers((prevMutedPlayers) => [...prevMutedPlayers, playerId]);
-  // }
-  // function removeMute(playerId: string) {
-  //   setMutedPlayers((prevMutedPlayers) =>
-  //     prevMutedPlayers.filter((id) => id !== playerId)
-  //   );
-  // }
 
   useEffect(() => {
     socket.on(GameEvent.JOINED_ROOM, joinedRoom);
@@ -264,7 +294,10 @@ export const RoomProvider: React.FC<RoomProviderProps> = ({ children }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const currentPlayer = room.players[room.gameState.currentPlayer] || null;
+  // Prefer id-based resolution for current player
+  const currentPlayer = room.gameState.currentDrawerId
+    ? room.players.find((p) => p.playerId === room.gameState.currentDrawerId) || null
+    : room.players[room.gameState.currentPlayer] || null;
 
   const contextValue: RoomContextValue = {
     roomId: room.roomId,

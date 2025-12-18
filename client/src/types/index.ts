@@ -66,7 +66,6 @@ export interface DrawData {
   color: string;
   lineWidth: number;
   end: boolean;
-  playerId?: string;
   strokeId?: string; 
 }
 

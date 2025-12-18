@@ -576,8 +576,7 @@ export async function handleDrawAction(
         const point = { x, y, color, lineWidth, end, strokeId, playerId: socket.id };
         stroke.points = stroke.points ?? [];
         stroke.points.push(point);
-        // Broadcast to everyone including the drawer so their canvas stays in sync
-        io.to(room.roomId).emit(GameEvent.DRAW_DATA, point);
+        socket.to(room.roomId).emit(GameEvent.DRAW_DATA, point);
       }
       break;
     }
@@ -594,8 +593,7 @@ export async function handleDrawAction(
         room.gameState.strokes = room.gameState.strokes ?? [];
         room.gameState.strokes.push(stroke);
         rp!.delete(strokeId);
-        // notify all clients about the full stroke; but points were already broadcast incrementally
-        io.to(room.roomId).emit(GameEvent.DRAW_FULL, room.gameState.strokes);
+        socket.to(room.roomId).emit(GameEvent.DRAW_FULL, room.gameState.strokes);
       }
       break;
     }

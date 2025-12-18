@@ -159,7 +159,6 @@ const GameCanvas = (_props: { room: Room }) => {
   function receiveDrawPoint(data: DrawData) {
     const sid = data.strokeId;
     if (!sid) return;
-    const fromMe = data.playerId && data.playerId === socket.id;
     // find or create stroke object
     let s = strokesRef.current.find((st) => st.strokeId === sid);
     if (!s) {
@@ -170,9 +169,6 @@ const GameCanvas = (_props: { room: Room }) => {
         points: [],
       };
       strokesRef.current.push(s);
-    } else if (fromMe) {
-      // If the stroke already exists locally and this is my own echo, skip.
-      return;
     }
     s.points = s.points ?? [];
     const last = s.points[s.points.length - 1];

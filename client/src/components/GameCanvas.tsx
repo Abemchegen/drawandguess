@@ -1,20 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { socket } from "../socketHandler";
-import {
-  DrawData,
-  GameEvent,
-  MidGameState,
-  Room,
-  RoomState,
-  Stroke,
-} from "../types";
+import { DrawData, GameEvent, Room, Stroke } from "../types";
 import Toolbar from "./Toolbar";
 import { useRoom } from "../context/RoomContext";
 
 const GameCanvas = (_props: { room: Room }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [lineWidth, setLineWidth] = useState<number>(5);
-  const { myTurn, players } = useRoom();
+  const { myTurn } = useRoom();
 
   const [color, setColor] = useState<string>("#000000");
   const drawing = useRef<boolean>(false);

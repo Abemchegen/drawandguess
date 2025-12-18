@@ -17,15 +17,7 @@ const clientId = ensureClientId();
 
 // Determine backend URL - CRITICAL for Railway
 let backendUrl;
-
-if (process.env.NODE_ENV === "production") {
-  // In production, use the Railway public URL
-  backendUrl = process.env.BACKEND || window.location.origin.replace(/^http/, 'ws');
-} else {
-  // Local development
-  backendUrl = "http://localhost:8000";
-}
-
+backendUrl = process.env.BACKEND || window.location.origin.replace(/^http/, 'ws');
 console.log("Connecting to backend:", backendUrl);
 
 export const socket = io(backendUrl, {

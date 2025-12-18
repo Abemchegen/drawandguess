@@ -53,6 +53,8 @@ export function setupSocket(io: Server) {
         create?: boolean,
         clientIdArg?: string
       ) => {
+        // Fallback to English if the client sends null/undefined
+        const safeLanguage = language ?? Languages.en;
         const clientId = clientIdArg || String(socket.handshake.query.clientId || "");
         if (!playerData) {
           socket.emit("error", "playerData is required");
@@ -70,13 +72,13 @@ export function setupSocket(io: Server) {
             io,
             socket,
             playerData,
-            language,
+            safeLanguage,
             clientId
           );
         } 
         if (roomId) {
           cancelDisconnectGrace(clientId);
-          await handleNewPlayerJoin(roomId, socket, io, playerData, language, clientId);
+          await handleNewPlayerJoin(roomId, socket, io, playerData, safeLanguage, clientId);
         }
       }
     );

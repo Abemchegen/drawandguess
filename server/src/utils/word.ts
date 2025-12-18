@@ -8,6 +8,12 @@ const LANGUAGE_FILE_NAMES: Record<Languages, string> = {
   [Languages.en]: "en",
   [Languages.am]: "am",
 };
+
+function resolveLanguage(language?: Languages | null): Languages {
+  return Object.values(Languages).includes(language as Languages)
+    ? (language as Languages)
+    : Languages.en;
+}
 const CUSTOM_WORDS_WEIGHT = 3;
 
 // Cache words in memory
@@ -19,16 +25,17 @@ const wordsCache: Record<Languages, string[]> = {} as Record<
 // Load words for a language
 function loadWords(language: Languages): Promise<string[]> {
   return new Promise((resolve, reject) => {
-    if (wordsCache[language]) {
-      return resolve(wordsCache[language]);
+    const lang = resolveLanguage(language);
+    if (wordsCache[lang]) {
+      return resolve(wordsCache[lang]);
     }
 
-    const fileName = LANGUAGE_FILE_NAMES[language] ?? language.toLowerCase();
+    const fileName = LANGUAGE_FILE_NAMES[lang] ?? String(lang).toLowerCase();
     const filePath = path.join(WORDS_DIR, `${fileName}.txt`);
     fs.readFile(filePath, "utf8", (err, data) => {
       if (err) {
         return reject(
-          new Error(`Failed to load words for ${language}: ${err.message}`)
+          new Error(`Failed to load words for ${lang}: ${err.message}`)
         );
       }
       const text = data.replace(/^\uFEFF/, ""); 
@@ -41,7 +48,7 @@ function loadWords(language: Languages): Promise<string[]> {
         return reject(new Error(`No words found in ${filePath}`));
       }
 
-      wordsCache[language] = words;
+      wordsCache[lang] = words;
       resolve(words);
     });
   });
@@ -55,6 +62,7 @@ export async function getRandomWords(
   customWords: string[] = []
 ): Promise<string[]> {
   try {
+    const lang = resolveLanguage(language);
     let words: string[] = [];
     const normalizedCustom = customWords
         .map(w => normalizeForCompare(w))
@@ -66,14 +74,14 @@ export async function getRandomWords(
       }
       words = normalizedCustom;
     } else {
-      const loadedWords = await loadWords(language);
+      const loadedWords = await loadWords(lang);
 
       words = [
         ...loadedWords,
         ...Array(CUSTOM_WORDS_WEIGHT).fill(normalizedCustom).flat(),
       ];
       if (words.length < n) {
-        throw new Error(`Not enough words available in ${language}`);
+        throw new Error(`Not enough words available in ${lang}`);
       }
     }
 

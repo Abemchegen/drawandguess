@@ -17,7 +17,7 @@ const clientId = ensureClientId();
 
 // Determine backend URL - CRITICAL for Railway
 let backendUrl;
-backendUrl = process.env.BACKEND || window.location.origin.replace(/^http/, 'ws');
+backendUrl = import.meta.env.VITE_BACKEND_URL 
 console.log("Connecting to backend:", backendUrl);
 
 export const socket = io(backendUrl, {

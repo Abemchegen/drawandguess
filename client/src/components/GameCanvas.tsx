@@ -159,6 +159,7 @@ const GameCanvas = (_props: { room: Room }) => {
   function receiveDrawPoint(data: DrawData) {
     const sid = data.strokeId;
     if (!sid) return;
+    const fromMe = data.playerId && data.playerId === socket.id;
     // find or create stroke object
     let s = strokesRef.current.find((st) => st.strokeId === sid);
     if (!s) {
@@ -169,9 +170,21 @@ const GameCanvas = (_props: { room: Room }) => {
         points: [],
       };
       strokesRef.current.push(s);
+    } else if (fromMe) {
+      // If the stroke already exists locally and this is my own echo, skip.
+      return;
     }
     s.points = s.points ?? [];
-    s.points.push(data);
+    const last = s.points[s.points.length - 1];
+    // Skip duplicate points (can happen when server echoes back our own draw)
+    if (
+      !last ||
+      last.x !== data.x ||
+      last.y !== data.y ||
+      last.end !== data.end
+    ) {
+      s.points.push(data);
+    }
     // draw incremental
     drawStrokeOnCanvas(s);
   }
@@ -181,13 +194,16 @@ const GameCanvas = (_props: { room: Room }) => {
   useEffect(() => {
     const onGlobalMouseUp = () => stopDrawing();
     const onGlobalTouchEnd = () => stopDrawing();
+    const onGlobalTouchCancel = () => stopDrawing();
 
     window.addEventListener("mouseup", onGlobalMouseUp);
     window.addEventListener("touchend", onGlobalTouchEnd);
+    window.addEventListener("touchcancel", onGlobalTouchCancel);
 
     return () => {
       window.removeEventListener("mouseup", onGlobalMouseUp);
       window.removeEventListener("touchend", onGlobalTouchEnd);
+      window.removeEventListener("touchcancel", onGlobalTouchCancel);
     };
     // stopDrawing is stable (defined in same component scope)
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -4,6 +4,10 @@ import { Languages } from "../types";
 import GraphemeSplitter from "grapheme-splitter";
 
 const WORDS_DIR = path.join(__dirname, "../../words");
+const LANGUAGE_FILE_NAMES: Record<Languages, string> = {
+  [Languages.en]: "en",
+  [Languages.am]: "am",
+};
 const CUSTOM_WORDS_WEIGHT = 3;
 
 // Cache words in memory
@@ -19,7 +23,8 @@ function loadWords(language: Languages): Promise<string[]> {
       return resolve(wordsCache[language]);
     }
 
-    const filePath = path.join(WORDS_DIR, `${language}.txt`);
+    const fileName = LANGUAGE_FILE_NAMES[language] ?? language.toLowerCase();
+    const filePath = path.join(WORDS_DIR, `${fileName}.txt`);
     fs.readFile(filePath, "utf8", (err, data) => {
       if (err) {
         return reject(

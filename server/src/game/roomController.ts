@@ -568,18 +568,19 @@ export async function handleDrawAction(
       break;
     }
     case "POINT": {
-          if (!drawData) return;
-          const { strokeId, x, y, color, lineWidth, end } = drawData;
-          const rp = inProgressStrokes.get(room.roomId);
-          const stroke = rp?.get(strokeId);
-          if (stroke) {
-            const point = { x, y, color, lineWidth, end, strokeId };
-             stroke.points = stroke.points ?? []
-            stroke.points.push(point);
-            socket.to(room.roomId).emit(GameEvent.DRAW_DATA, point);
-          }
-          break;
-        }
+      if (!drawData) return;
+      const { strokeId, x, y, color, lineWidth, end } = drawData;
+      const rp = inProgressStrokes.get(room.roomId);
+      const stroke = rp?.get(strokeId);
+      if (stroke) {
+        const point = { x, y, color, lineWidth, end, strokeId, playerId: socket.id };
+        stroke.points = stroke.points ?? [];
+        stroke.points.push(point);
+        // Broadcast to everyone including the drawer so their canvas stays in sync
+        io.to(room.roomId).emit(GameEvent.DRAW_DATA, point);
+      }
+      break;
+    }
 
     case "END": {
       const { strokeId } = drawData ?? {};

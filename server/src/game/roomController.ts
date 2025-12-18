@@ -146,6 +146,7 @@ function resetRoundState(
     resetRoundCounters?: boolean;
     roomState?: RoomState;
     clearWord?: boolean;
+    resetHasDrawn?: boolean;
     durationSeconds?: number;
   }
 ) {
@@ -154,6 +155,7 @@ function resetRoundState(
     resetRoundCounters = false,
     roomState,
     clearWord = true,
+    resetHasDrawn = false,
     durationSeconds,
   } =
     options || {};
@@ -171,7 +173,7 @@ function resetRoundState(
     ...p,
     guessed: false,
     guessedAt: null,
-    hasDrawn: false,
+    hasDrawn: resetHasDrawn ? false : (p.hasDrawn ?? false),
     ...(resetScores ? { score: 0 } : {}),
   }));
 
@@ -509,6 +511,7 @@ export async function endGame(roomId: string, io: Server) {
       resetRoundCounters: true,
       roomState: RoomState.NOT_STARTED,
       clearWord: true,
+      resetHasDrawn: true,
     }
   );
 

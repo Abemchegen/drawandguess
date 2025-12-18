@@ -9,7 +9,7 @@ export default function JoinGameForm() {
     // appearance: [0, 0, 0],
   });
   const [language, setLanguage] = useState<Languages>(
-    localStorage.getItem("language") as Languages | Languages.am
+    (localStorage.getItem("language") as Languages) || Languages.en
   );
   const [roomId, setRoomId] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
@@ -90,13 +90,11 @@ export default function JoinGameForm() {
             value={language}
             onChange={(e) => setLanguage(e.target.value as Languages)}
           >
-            {Object.entries(Languages).map(([key, value]) => {
-              return (
-                <option key={key} value={key}>
-                  {value}
-                </option>
-              );
-            })}
+            {Object.entries(Languages).map(([key, value]) => (
+              <option key={key} value={value}>
+                {value}
+              </option>
+            ))}
           </select>
         </div>
         <div className="flex flex-col space-x-2 space-y-2">

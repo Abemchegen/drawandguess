@@ -94,8 +94,8 @@ const GameSettings: React.FC = () => {
       value: gameSettings.language,
       type: SettingValue.language,
       icon: <Globe size={18} />,
-      options: Object.entries(Languages).map(([key, val]) => ({
-        value: key,
+      options: Object.entries(Languages).map(([_, val]) => ({
+        value: val,
         label: val,
       })),
     },

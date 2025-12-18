@@ -9,10 +9,27 @@ const LANGUAGE_FILE_NAMES: Record<Languages, string> = {
   [Languages.am]: "am",
 };
 
-function resolveLanguage(language?: Languages | null): Languages {
-  return Object.values(Languages).includes(language as Languages)
-    ? (language as Languages)
-    : Languages.en;
+function resolveLanguage(language?: Languages | string | null): Languages {
+  if (!language) return Languages.en;
+
+  const input = String(language).trim();
+
+  // If already a valid enum value ("English" | "Amharic"), keep it
+  if (Object.values(Languages).includes(input as Languages)) {
+    return input as Languages;
+  }
+
+  // Accept enum keys like "en" | "am" (case-insensitive)
+  const matchKey = (Object.keys(Languages) as Array<keyof typeof Languages>)
+    .find((k) => k.toLowerCase() === input.toLowerCase());
+  if (matchKey) return Languages[matchKey];
+
+  // Accept values case-insensitively (e.g., "amharic")
+  const matchVal = (Object.values(Languages) as string[])
+    .find((v) => v.toLowerCase() === input.toLowerCase());
+  if (matchVal) return matchVal as Languages;
+
+  return Languages.en;
 }
 const CUSTOM_WORDS_WEIGHT = 3;
 
